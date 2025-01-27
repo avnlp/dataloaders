@@ -3,95 +3,75 @@ from typing import Any, Optional, Union
 
 import weave
 from datasets import load_dataset
-from haystack import Document as HaystackDocument
-from langchain_core.documents import Document as LangchainDocument
+from haystack import Document
+from haystack.components.preprocessors import RecursiveDocumentSplitter
+from haystack.core.component import Component
 
-from dataloaders.text_splitters import TextSplitter
-from dataloaders.utils import DocumentTransformer, LoggerFactory
+from dataloaders.haystack.llms.groq import ChatGroqGenerator
+from dataloaders.haystack.prompts.summarize_answers import SummarizeAnswersPrompt
+from dataloaders.haystack.utils import DocumentTransformer, LoggerFactory
 
 logger_factory = LoggerFactory(logger_name=__name__, log_level=logging.INFO)
 logger = logger_factory.get_logger()
 
 
-class ARCDataloader:
-    """A data loader class for the ARC dataset.
+class FactScoreDataloader:
+    """A data loader class for the FactScore dataset that processes questions, contexts, and answers.
 
-    This class is designed to load, process, and prepare the ARC dataset for downstream tasks,
-    such as evaluation or integration into retrieval-augmented generation pipelines. It also
-    supports integration with Weave for dataset publishing.
+    It integrates with a ChatGroqGenerator to summarize answers and prepares data for evaluation
+    and use in downstream tasks.
 
     Attributes:
-        dataset (Any): The loaded ARC dataset split as specified during initialization.
-        data (Optional[List[Dict[str, Union[str, List[str], List[Dict[str, str]]]]]]):
-            Cached processed data containing questions, contexts, and answers from the ARC dataset.
-        text_splitter (str): The name of the text splitter to use for chunking text documents.
-        text_splitter_params (Optional[Dict[str, Union[str, int]]]): Parameters to configure the text splitter.
+        dataset: Loaded FactScore dataset split (e.g., "test").
+        answer_summary_generator (ChatGroqGenerator): Generator to summarize answers using LLM.
+        data (List[Dict[str, Union[str, List[str], List[Dict[str, str]]]]]): Cached processed data.
         corpus (List[Dict[str, Any]]): A list of processed documents with metadata, ready for evaluation
             or other downstream tasks.
     """
 
     def __init__(
         self,
-        dataset_name: str = "awinml/arc_challenge_processed",
+        answer_summary_generator: ChatGroqGenerator,
+        dataset_name: str = "awinml/factscore_unlabelled_alpaca_13b_retrieval",
         split: str = "test",
-        text_splitter: str = "RecursiveCharacterTextSplitter",
-        text_splitter_params: Optional[dict[str, Union[str, int]]] = None,
+        text_splitter: Component = RecursiveDocumentSplitter(),
     ):
-        """Initialize the ARCDataloader class with the specified dataset and configurations.
+        """Initialize the FactScoreDataloader with the specified dataset and answer summarizer.
 
         Args:
-            dataset_name (str): The name of the dataset to load, e.g., "awinml/arc_challenge_processed".
-            split (str): The dataset split to load, e.g., "train", "validation", or "test".
-            text_splitter (str): The name of the text splitter to use for processing documents.
-                Defaults to "RecursiveCharacterTextSplitter".
-            text_splitter_params (Optional[dict[str, Union[str, int]]]): A dictionary of parameters to configure
-                the text splitter. Defaults to None.
-
-        Attributes:
-            dataset (Any): The loaded dataset split as specified during initialization.
-            data (Optional[list[dict[str, Union[str, list[str], list[dict[str, str]]]]]]): Cached processed data
-                for the ARC dataset.
-            text_splitter (str): The name of the text splitter used for splitting text.
-            text_splitter_params (Optional[dict[str, Union[str, int]]]): Parameters for configuring the text splitter.
-            corpus (list[dict[str, Any]]): A list of chunked documents with metadata processed from the dataset.
+            answer_summary_generator (ChatGroqGenerator): Instance of the ChatGroqGenerator for answer summarization.
+            dataset_name (str): Name of the dataset to load. Defaults to "awinml/factscore_unlabelled_alpaca_13b_retrieval".
+            split (str): Split of the dataset to load (e.g., "test", "train"). Defaults to "test".
+            text_splitter (Component): The text splitter to use for processing documents. Defaults to
+                RecursiveDocumentSplitter.
         """
         self.dataset = load_dataset(dataset_name, split=split)
+        self.answer_summary_generator = answer_summary_generator
         self.data: Optional[list[dict[str, Union[str, list[str], list[dict[str, str]]]]]] = None
         self.text_splitter = text_splitter
-        self.text_splitter_params = text_splitter_params
         self.corpus: list[dict[str, Any]] = []
 
-    def _format_question_and_extract_answer(
-        self, question: str, choices: dict[str, list[str]], answerkey: str
-    ) -> tuple[str, str]:
-        """Format the question by appending the provided choices and extracts the correct answer.
-
-        This method modifies the question to include the labeled choices and retrieves the correct
-        answer text based on the provided answer key.
+    def _summarize_answers(self, question: str, answers: list[str]) -> str:
+        """Summarizes the given answers to a question using the ChatGroqGenerator.
 
         Args:
-            question (str): The original question text.
-            choices (dict[str, list[str]]): A dictionary with the following keys:
-                - "label" (list[str]): The labels for the choices (e.g., "A", "B", "C").
-                - "text" (list[str]): The corresponding text for each choice.
-            answerkey (str): The label of the correct answer (e.g., "A").
+            question (str): The question for which answers need to be summarized.
+            answers (List[str]): List of possible answers.
 
         Returns:
-            tuple[str, str]:
-                - updated_question (str): The question text with appended labeled choices.
-                - answer (str): The text corresponding to the correct answer key.
+            str: Summarized answer or an error message if the process fails.
 
-        Raises:
-            StopIteration: If the provided answer key does not match any choice label.
+        Example:
+            >>> question = "What is the capital of France?"
+            >>> answers = ["Paris", "PARIS", "Paris."]
+            >>> loader._summarize_answers(question, answers)
+            "Paris"
         """
-        # Append formatted choices to the question
-        for label, text in zip(choices["label"], choices["text"]):
-            question += f"\n{label}: {text}"
-
-        # Extract the correct answer text
-        answer = next(text for label, text in zip(choices["label"], choices["text"]) if label == answerkey)
-
-        return question, answer
+        try:
+            prompt = SummarizeAnswersPrompt.format(question=question, answers=answers)
+            return self.answer_summary_generator.predict(user_prompts=[prompt])
+        except Exception:
+            return "Error generating answer!"
 
     def _extract_contexts(self, contexts: list[dict[str, str]]) -> tuple[list[str], list[dict[str, str]]]:
         """Extract and structure the context documents and their metadata.
@@ -160,9 +140,8 @@ class ARCDataloader:
         for row in data:
             # Validate and extract required fields from the current row
             question: str = row.get("question", "")
-            choices: list[str] = row.get("choices", [""])
+            answers: list[str] = row.get("answers", [""])
             answer: str = row.get("answer", "")
-            answerkey: str = row.get("answerKey", "N/A")
             documents: list[str] = row.get("docs", [""])
             document_metadatas: list[dict[str, Any]] = row.get("metadata", [])
 
@@ -184,9 +163,8 @@ class ARCDataloader:
                         "text": document,
                         "metadata": {
                             "question": question,
-                            "choices": choices,
+                            "answers": answers,
                             "answer": answer,
-                            "answerKey": answerkey,
                             **metadata,  # Include any additional metadata provided
                         },
                     }
@@ -208,35 +186,32 @@ class ARCDataloader:
         Args:
             data (list[dict[str, Any]]):
                 A list of dictionaries, each representing a document to preprocess.
-                Each dictionary must contain at least the `page_content` (str) and `metadata` (dict[str, Any]) fields.
+                Each dictionary must contain at least the `content` (str) and `metadata` (dict[str, Any]) fields.
 
         Returns:
             list[dict[str, Any]]:
-                A list of dictionaries representing the processed documents, where the `page_content` is split into
+                A list of dictionaries representing the processed documents, where the `content` is split into
                 smaller chunks, as determined by the configuration of the text splitter. Each dictionary retains the original
-                metadata along with the newly chunked `page_content`.
+                metadata along with the newly chunked `content`.
 
         Raises:
             ValueError: If the input data is improperly formatted or cannot be processed (e.g., missing required fields).
         """
-        # Initialize text splitter
-        self.splitter = TextSplitter(splitter_name=self.text_splitter, splitter_params=self.text_splitter_params)
-
-        # Format documents for the splitter (convert dictionary to LangChain Documents)
-        data = DocumentTransformer.dict_to_documents(data=data, format_type="langchain")
+        # Format documents for the splitter (convert dictionary to Haystack Documents)
+        data = DocumentTransformer.dict_to_documents(data=data)
 
         # Apply the splitter to chunk the documents
-        transformed_docs = self.splitter.transform_documents(data)
+        transformed_docs = self.text_splitter.run(data)["documents"]
 
         # Convert chunked documents back into dictionary format
-        transformed_data = DocumentTransformer.langchain_docs_to_dict(transformed_docs)
+        transformed_data = DocumentTransformer.haystack_docs_to_dict(transformed_docs)
 
         return transformed_data
 
     def load_data(self) -> list[dict[str, Union[str, list[str], list[dict[str, str]]]]]:
-        """Load and process the ARC dataset, format the questions and answers, and structure the context documents and metadata.
+        """Load and process the FactScore dataset,  format the questions and answers, and structure the context documents and metadata.
 
-        This method processes the ARC dataset by extracting the question, choices, answer, and context, formatting them
+        This method processes the FactScore dataset by extracting the question, choices, answer, and context, formatting them
         into a structured form suitable for downstream tasks. The processed data is cached to avoid reprocessing,
         which helps in efficient reuse of the data.
 
@@ -254,11 +229,10 @@ class ARCDataloader:
             logger.info("Loading and processing dataset.")
             self.data = []
             for row in self.dataset:
-                # Extract and format the question, answer, and choices
+                # Extract and format the question, answer
                 question = row["question"]
-                choices = row["choices"]
-                answerkey = row["answerKey"]
-                question, answer = self._format_question_and_extract_answer(question, choices, answerkey)
+                answers = row["answers"]
+                summarized_answer = self._summarize_answers(question, answers)
 
                 # Extract contexts and metadata
                 docs, metadata = self._extract_contexts(row["ctxs"])
@@ -267,9 +241,8 @@ class ARCDataloader:
                 self.data.append(
                     {
                         "question": question,
-                        "choices": choices,
-                        "answer": answer,
-                        "answerKey": answerkey,
+                        "answers": answers,
+                        "answer": summarized_answer,
                         "docs": docs,
                         "metadata": metadata,
                     }
@@ -284,36 +257,14 @@ class ARCDataloader:
 
         return self.corpus
 
-    def get_langchain_documents(self) -> list[LangchainDocument]:
-        """Convert the processed corpus to LangChain Document objects.
-
-        This method converts the `self.corpus`, which contains the processed text and metadata, into LangChain Document objects
-        for use with LangChain-based pipelines. It ensures that the data is loaded before processing.
-
-        Returns:
-            list[LangchainDocument]: A list of LangChain Document objects, where each document represents a chunked
-            text from the corpus with corresponding metadata.
-
-        Raises:
-            ValueError: If `self.corpus` is empty (i.e., the data has not been loaded).
-        """
-        if not self.corpus:
-            err_msg = "Data must be loaded before creating documents. Please call load_data() first."
-            logger.error(err_msg)
-            raise ValueError(err_msg)
-
-        # Convert the corpus to LangChain documents
-        langchain_docs = DocumentTransformer.dict_to_documents(data=self.corpus, format_type="langchain")
-        return langchain_docs
-
-    def get_haystack_documents(self) -> list[HaystackDocument]:
+    def get_documents(self) -> list[Document]:
         """Convert the processed corpus to Haystack Document objects.
 
         This method converts the `self.corpus`, which contains the processed text and metadata, into Haystack Document objects
         for use in Haystack-based retrieval pipelines. It ensures that the data is loaded before processing.
 
         Returns:
-            list[HaystackDocument]: A list of Haystack Document objects, where each document represents a chunked text
+            list[Document]: A list of Haystack Document objects, where each document represents a chunked text
             from the corpus with corresponding metadata.
 
         Raises:
@@ -325,7 +276,8 @@ class ARCDataloader:
             raise ValueError(err_msg)
 
         # Convert the corpus to Haystack documents
-        haystack_docs = DocumentTransformer.dict_to_documents(data=self.corpus, format_type="haystack")
+        haystack_docs = DocumentTransformer.dict_to_documents(data=self.corpus)
+
         return haystack_docs
 
     def get_evaluation_data(self) -> list[dict[str, Any]]:

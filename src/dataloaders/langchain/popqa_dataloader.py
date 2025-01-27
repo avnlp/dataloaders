@@ -3,62 +3,53 @@ from typing import Any, Optional, Union
 
 import weave
 from datasets import load_dataset
-from haystack import Document as HaystackDocument
-from langchain_core.documents import Document as LangchainDocument
+from langchain_core.documents import Document
+from langchain_text_splitters import RecursiveCharacterTextSplitter
+from langchain_text_splitters.base import TextSplitter
 
-from dataloaders.llms.groq import ChatGroqGenerator
-from dataloaders.prompts.summarize_answers import SummarizeAnswersPrompt
-from dataloaders.text_splitters import TextSplitter
-from dataloaders.utils import DocumentTransformer, LoggerFactory
+from dataloaders.langchain.llms.groq import ChatGroqGenerator
+from dataloaders.langchain.prompts.summarize_answers import SummarizeAnswersPrompt
+from dataloaders.langchain.utils import DocumentTransformer, LoggerFactory
 
 logger_factory = LoggerFactory(logger_name=__name__, log_level=logging.INFO)
 logger = logger_factory.get_logger()
 
 
-class TriviaQADataloader:
-    """A data loader class for the TriviaQA dataset that processes questions, contexts, and answers.
+class PopQADataloader:
+    """A data loader class for the PopQA dataset that processes questions, contexts, and answers.
 
     It integrates with a ChatGroqGenerator to summarize answers and prepares data for evaluation
     and use in downstream tasks.
 
     Attributes:
-        dataset: The loaded TriviaQA dataset from the Hugging Face Hub.
+        dataset: Loaded PopQA dataset split (e.g., "test").
         answer_summary_generator (ChatGroqGenerator): Generator to summarize answers using LLM.
         data (List[Dict[str, Union[str, List[str], List[Dict[str, str]]]]]): Cached processed data.
+        text_splitter (TextSplitter): The text splitter used for processing documents.
+        corpus (List[Dict[str, Any]]): A list of processed documents with metadata, ready for evaluation
+            or other downstream tasks.
     """
 
     def __init__(
         self,
         answer_summary_generator: ChatGroqGenerator,
-        dataset_name: str = "awinml/triviaqa",
+        dataset_name: str = "awinml/popqa_longtail",
         split: str = "test",
-        text_splitter: str = "RecursiveCharacterTextSplitter",
-        text_splitter_params: Optional[dict[str, Union[str, int]]] = None,
+        text_splitter: TextSplitter = RecursiveCharacterTextSplitter(),
     ):
-        """Initialize the TriviaQADataloader with the specified dataset and answer summarizer.
+        """Initialize the PopQADataloader with the specified dataset and answer summarizer.
 
         Args:
             answer_summary_generator (ChatGroqGenerator): Instance of the ChatGroqGenerator for answer summarization.
             dataset_name (str): Name of the dataset to load. Defaults to "awinml/popqa_longtail".
             split (str): Split of the dataset to load (e.g., "test", "train"). Defaults to "test".
-            text_splitter (str): The name of the text splitter to use for processing documents.
+            text_splitter (TextSplitter): The text splitter used for processing documents.
                 Defaults to "RecursiveCharacterTextSplitter".
-            text_splitter_params (Optional[dict[str, Union[str, int]]]): A dictionary of parameters to configure
-                the text splitter. Defaults to None.
-
-        Attributes:
-            dataset (Any): The loaded dataset split as specified during initialization.
-            data (Optional[list[dict[str, Union[str, list[str], list[dict[str, str]]]]]]): Cached processed data
-                for the ARC dataset.
-            text_splitter (str): The name of the text splitter used for splitting text.
-            text_splitter_params (Optional[dict[str, Union[str, int]]]): Parameters for configuring the text splitter.
-            corpus (list[dict[str, Any]]): A list of chunked documents with metadata processed from the dataset.
         """
         self.dataset = load_dataset(dataset_name, split=split)
         self.answer_summary_generator = answer_summary_generator
         self.data: Optional[list[dict[str, Union[str, list[str], list[dict[str, str]]]]]] = None
         self.text_splitter = text_splitter
-        self.text_splitter_params = text_splitter_params
         self.corpus: list[dict[str, Any]] = []
 
     def _summarize_answers(self, question: str, answers: list[str]) -> str:
@@ -207,14 +198,11 @@ class TriviaQADataloader:
         Raises:
             ValueError: If the input data is improperly formatted or cannot be processed (e.g., missing required fields).
         """
-        # Initialize text splitter
-        self.splitter = TextSplitter(splitter_name=self.text_splitter, splitter_params=self.text_splitter_params)
-
         # Format documents for the splitter (convert dictionary to LangChain Documents)
-        data = DocumentTransformer.dict_to_documents(data=data, format_type="langchain")
+        data = DocumentTransformer.dict_to_documents(data=data)
 
         # Apply the splitter to chunk the documents
-        transformed_docs = self.splitter.transform_documents(data)
+        transformed_docs = self.text_splitter.transform_documents(data)
 
         # Convert chunked documents back into dictionary format
         transformed_data = DocumentTransformer.langchain_docs_to_dict(transformed_docs)
@@ -270,14 +258,14 @@ class TriviaQADataloader:
 
         return self.corpus
 
-    def get_langchain_documents(self) -> list[LangchainDocument]:
+    def get_documents(self) -> list[Document]:
         """Convert the processed corpus to LangChain Document objects.
 
         This method converts the `self.corpus`, which contains the processed text and metadata, into LangChain Document objects
         for use with LangChain-based pipelines. It ensures that the data is loaded before processing.
 
         Returns:
-            list[LangchainDocument]: A list of LangChain Document objects, where each document represents a chunked
+            list[Document]: A list of LangChain Document objects, where each document represents a chunked
             text from the corpus with corresponding metadata.
 
         Raises:
@@ -289,30 +277,8 @@ class TriviaQADataloader:
             raise ValueError(err_msg)
 
         # Convert the corpus to LangChain documents
-        langchain_docs = DocumentTransformer.dict_to_documents(data=self.corpus, format_type="langchain")
+        langchain_docs = DocumentTransformer.dict_to_documents(data=self.corpus)
         return langchain_docs
-
-    def get_haystack_documents(self) -> list[HaystackDocument]:
-        """Convert the processed corpus to Haystack Document objects.
-
-        This method converts the `self.corpus`, which contains the processed text and metadata, into Haystack Document objects
-        for use in Haystack-based retrieval pipelines. It ensures that the data is loaded before processing.
-
-        Returns:
-            list[HaystackDocument]: A list of Haystack Document objects, where each document represents a chunked text
-            from the corpus with corresponding metadata.
-
-        Raises:
-            ValueError: If `self.corpus` is empty (i.e., the data has not been loaded).
-        """
-        if not self.corpus:
-            err_msg = "Data must be loaded before creating documents. Please call load_data() first."
-            logger.error(err_msg)
-            raise ValueError(err_msg)
-
-        # Convert the corpus to Haystack documents
-        haystack_docs = DocumentTransformer.dict_to_documents(data=self.corpus, format_type="haystack")
-        return haystack_docs
 
     def get_evaluation_data(self) -> list[dict[str, Any]]:
         """Prepare and format data for evaluation.

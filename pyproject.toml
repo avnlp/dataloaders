@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "dataloaders"
-dynamic = ["version"]
+version = "0.0.1"
 description = 'Dataloaders for NLP datasets.'
 readme = "README.md"
 requires-python = ">=3.9"
@@ -34,6 +34,7 @@ dependencies = [
   "langchain-groq",
   "haystack-ai",
   "weave",
+  "edgartools",
 ]
 
 [project.optional-dependencies]
@@ -46,14 +47,6 @@ Source = "https://github.com/avnlp/dataloaders"
 
 [tool.hatch.build.targets.wheel]
 packages = ["src/dataloaders"]
-
-[tool.hatch.version]
-source = "vcs"
-fallback-version = "0.0.0-dev"
-
-[tool.hatch.version.raw-options]
-root = "../.."
-git_describe_command = 'git describe --tags --match="dataloaders-v[0-9]*"'
 
 [tool.hatch.envs.default]
 installer = "uv"
@@ -146,6 +139,8 @@ ignore = [
   "D104",
   # Ignore Line too long
   "E501",
+  # Ignore Function call in argument defaults
+  "B008",
 ]
 unfixable = [
   # Don't touch unused imports

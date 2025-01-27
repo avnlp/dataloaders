@@ -15,11 +15,10 @@ from langchain_core.documents import Document as LangchainDocument
 from PIL import Image
 from tqdm.auto import tqdm
 
-from dataloaders.finance_companies_map import COMPANY_MAP, FilingItems10k, FilingItems10q
-from dataloaders.llms.groq import ChatGroqGenerator
-from dataloaders.prompts.financial_summary import FinancialSummaryKeywordsPrompt, FinancialSummaryPrompt
-from dataloaders.text_splitters import TextSplitter
-from dataloaders.utils import DocumentTransformer, LoggerFactory
+from dataloaders.langchain.finance_companies_map import COMPANY_MAP, FilingItems10k, FilingItems10q
+from dataloaders.langchain.llms.groq import ChatGroqGenerator
+from dataloaders.langchain.prompts.financial_summary import FinancialSummaryKeywordsPrompt, FinancialSummaryPrompt
+from dataloaders.langchain.utils import DocumentTransformer, LoggerFactory
 
 # Set the identity for accessing EDGAR API
 DEFAULT_SEC_IDENTITY = "john@finrag.org"
@@ -29,7 +28,7 @@ logger_factory = LoggerFactory(logger_name=__name__, log_level=logging.INFO)
 logger = logger_factory.get_logger()
 
 
-class EdgarDataLoader:
+class EdgarDataloader:
     """A class for loading, processing, and managing SEC filings from the EDGAR database.
 
     This class interacts with the HuggingFace `datasets` library to load SEC filings. It includes a
