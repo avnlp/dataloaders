@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "dataloaders"
-version = "0.0.1"
+version = "0.0.2"
 description = 'Dataloaders for NLP datasets.'
 readme = "README.md"
 requires-python = ">=3.9"
@@ -21,12 +21,13 @@ classifiers = [
   "Programming Language :: Python :: 3.9",
   "Programming Language :: Python :: 3.10",
   "Programming Language :: Python :: 3.11",
+  "Programming Language :: Python :: 3.12",
+  "Programming Language :: Python :: 3.13",
   "Programming Language :: Python :: Implementation :: CPython",
   "Programming Language :: Python :: Implementation :: PyPy",
 ]
 dependencies = [
   "datasets",
-  "unstructured[all-docs]",
   "langchain-core",
   "langchain-text-splitters",
   "langchain-experimental",
