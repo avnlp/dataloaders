@@ -1,9 +1,3 @@
-# Local run files
-qa.db
-**/qa.db
-**/*qa*.db
-**/test-reports
-
 # Byte-compiled / optimized / DLL files
 __pycache__/
 /pycache/* 
