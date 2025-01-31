@@ -36,6 +36,7 @@ dependencies = [
   "haystack-ai>=2.9.0",
   "weave",
   "edgartools",
+  "fsspec",
 ]
 
 [project.optional-dependencies]
