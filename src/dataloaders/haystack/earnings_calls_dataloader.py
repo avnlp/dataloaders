@@ -243,9 +243,9 @@ class EarningsCallDataloader:
         # Prepare the evaluation data
         self.eval_data = [
             {
-                "question": row["question"],
-                "answer": row["answer"],
-                "context": row["context"],
+                "input": row["question"],
+                "expected_output": row["answer"],
+                "context": [row["context"]],
                 "year": row["year"],
                 "quarter": row["quarter"],
                 "ticker": row["ticker"],

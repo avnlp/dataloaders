@@ -221,9 +221,9 @@ class EarningsCallDataloader:
         Returns:
             list[dict[str, Any]]:
                 A list of dictionaries, each representing an evaluation instance with the following keys:
-                - "question" (str): The question text.
-                - "answer" (str): The expected answer text.
-                - "context" (str): The supporting evidence context.
+                - "input" (str): The question text.
+                - "expected_output" (str): The expected answer text.
+                - "context" (list[str]): The supporting evidence context.
                 - "year" (str): The fiscal year.
                 - "quarter" (str): The fiscal quarter.
                 - "ticker" (str): The company ticker symbol.
@@ -240,9 +240,9 @@ class EarningsCallDataloader:
         # Prepare the evaluation data
         self.eval_data = [
             {
-                "question": row["question"],
-                "answer": row["answer"],
-                "context": row["context"],
+                "input": row["question"],
+                "expected_output": row["answer"],
+                "context": [row["context"]],
                 "year": row["year"],
                 "quarter": row["quarter"],
                 "ticker": row["ticker"],
