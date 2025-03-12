@@ -409,9 +409,9 @@ class FinanceBenchDataloader:
         Returns:
             list[dict[str, Any]]:
                 A list of dictionaries, each representing an evaluation instance with the following keys:
-                - "question" (str): The question text.
-                - "answer" (str): The expected answer text.
-                - "docs" (list[str]): A list of documents relevant to the question.
+                - "input" (str): The question.
+                - "expected_output" (str): The expected answer text.
+                - "context" (list[str]): A list of documents relevant to the question.
 
         Raises:
             ValueError: If no data is available after calling `load_data`. This occurs when `self.data` is empty
@@ -428,9 +428,9 @@ class FinanceBenchDataloader:
         # Prepare the evaluation data
         eval_data = [
             {
-                "question": row["question"],
-                "answer": row["answer"],
-                "docs": row["docs"],
+                "input": row["question"],
+                "expected_output": row["answer"],
+                "context": row["docs"],
             }
             for row in self.data
         ]
