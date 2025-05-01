@@ -47,7 +47,7 @@ class EarningsCallDataloader:
         self.text_splitter = text_splitter
 
     def load_data(self) -> list[dict[str, Union[str, list[str], list[dict[str, str]]]]]:
-        """Load and transform the FinanceBench dataset into processed, structured format.
+        """Load and transform the Earnings Call dataset into processed, structured format.
 
         Main processing method that:
         1. Extracts key financial QA pairs
@@ -120,7 +120,7 @@ class EarningsCallDataloader:
         return transformed_data
 
     def get_corpus(self):
-        """Load and transform the FinanceBench dataset into processed, structured format.
+        """Load and transform the Earnings Call dataset into processed, structured format.
 
         Main processing method that:
         1. Extracts key financial QA pairs
